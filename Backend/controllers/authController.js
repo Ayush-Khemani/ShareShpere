@@ -23,7 +23,8 @@ function loginUser(req, res) {
     console.log(user);
     
     res.json({
-        token : JWTtoken
+        token : JWTtoken,
+        role: user.role
     })
 
     // Responsibilty of frontend to store it in browser.

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, User, LogOut, Heart, Filter, MapPin, Tag, Camera, Mail, Phone } from 'lucide-react';
 import LandingPage from './LandingPage';
+import UserDashboard from "./components/UserDashboard";
+import AdminDashboard from "./components/AdminDashboard";
 // API Base URL - Update this to match your backend
 const API_BASE = 'http://localhost:3000';
 
@@ -35,31 +37,42 @@ const LoginComponent = ({ onLogin, switchToRegister }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
- const handleSubmit = async (e) => {
-  e.preventDefault();
-  setLoading(true);
-  setError('');
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
 
-  try {
-    const res = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (!res.ok) throw new Error(data.msg || 'Login failed');
+      if (!res.ok) throw new Error(data.msg || 'Login failed');
 
-    localStorage.setItem('token', data.token);
-    onLogin();
 
-  } catch (err) {
-    setError(err.message);
-  } finally {
-    setLoading(false);
-  }
-};
+      if (data.role) {
+        localStorage.setItem('role', data.role.toLowerCase());
+        console.log('Role saved to localStorage:', localStorage.getItem('role'));
+      } else {
+        console.error('Role not found in response');
+      }
+      localStorage.setItem('token', data.token);
+
+      onLogin();
+
+      console.log('Login response:', data);
+
+
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
 
   return (
@@ -171,7 +184,7 @@ const RegisterComponent = ({ onRegister, switchToLogin }) => {
               {error}
             </div>
           )}
-          
+
           {success && (
             <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm">
               {success}
@@ -250,33 +263,33 @@ const ItemCard = ({ item }) => (
   <div className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 overflow-hidden">
     <div className="aspect-w-16 aspect-h-9 bg-gray-200">
       {item.item_photo ? (
-        <img 
-          src={`${API_BASE}/${item.item_photo}`} 
+        <img
+          src={`${API_BASE}/uploads/${item.photo_path.split('/').pop()}`}
           alt={item.item_name}
           className="w-full h-48 object-cover"
         />
+
       ) : (
         <div className="w-full h-48 bg-gray-200 flex items-center justify-center">
           <Camera className="text-gray-400 w-12 h-12" />
         </div>
       )}
     </div>
-    
+
     <div className="p-6">
       <h3 className="font-bold text-lg text-gray-800 mb-2">{item.item_name}</h3>
-      
+
       <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
         <div className="flex items-center gap-1">
           <Tag className="w-4 h-4" />
           <span>{item.category}</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className={`px-2 py-1 rounded-full text-xs ${
-            item.item_condition === 'New' ? 'bg-green-100 text-green-800' :
+          <span className={`px-2 py-1 rounded-full text-xs ${item.item_condition === 'New' ? 'bg-green-100 text-green-800' :
             item.item_condition === 'Like New' ? 'bg-blue-100 text-blue-800' :
-            item.item_condition === 'Good' ? 'bg-yellow-100 text-yellow-800' :
-            'bg-gray-100 text-gray-800'
-          }`}>
+              item.item_condition === 'Good' ? 'bg-yellow-100 text-yellow-800' :
+                'bg-gray-100 text-gray-800'
+            }`}>
             {item.item_condition}
           </span>
         </div>
@@ -320,7 +333,7 @@ const Dashboard = ({ onLogout }) => {
     setLoading(true);
     try {
       let endpoint = '/item/get-items';
-      
+
       // If there are search params, use search endpoint
       if (searchQuery || filters.category || filters.condition) {
         const params = new URLSearchParams();
@@ -331,7 +344,13 @@ const Dashboard = ({ onLogout }) => {
       }
 
       const response = await apiCall(endpoint);
-      setItems(response.items || []);
+
+      const normalizedItems = (response.items || []).map(item => ({
+        ...item,
+        photo_path: (item.photo_path || item.item_photo || '').replace(/\\/g, '/')
+      }));
+
+      setItems(normalizedItems);
     } catch (err) {
       console.error('Error fetching items:', err);
       setItems([]);
@@ -359,10 +378,10 @@ const Dashboard = ({ onLogout }) => {
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-          
+
           <select
             value={filters.category}
-            onChange={(e) => setFilters({...filters, category: e.target.value})}
+            onChange={(e) => setFilters({ ...filters, category: e.target.value })}
             className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Categories</option>
@@ -373,7 +392,7 @@ const Dashboard = ({ onLogout }) => {
 
           <select
             value={filters.condition}
-            onChange={(e) => setFilters({...filters, condition: e.target.value})}
+            onChange={(e) => setFilters({ ...filters, condition: e.target.value })}
             className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Conditions</option>
@@ -458,11 +477,10 @@ const Dashboard = ({ onLogout }) => {
       <div className="max-w-2xl mx-auto">
         <div className="bg-white rounded-xl shadow-lg p-8">
           <h2 className="text-2xl font-bold text-gray-800 mb-6">Donate an Item</h2>
-          
+
           {message && (
-            <div className={`p-4 rounded-lg mb-6 ${
-              message.includes('approval') ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
-            }`}>
+            <div className={`p-4 rounded-lg mb-6 ${message.includes('approval') ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+              }`}>
               {message}
             </div>
           )}
@@ -556,17 +574,15 @@ const Dashboard = ({ onLogout }) => {
             <nav className="hidden md:flex space-x-8">
               <button
                 onClick={() => setActiveTab('browse')}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === 'browse' ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:text-blue-600'
-                }`}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'browse' ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:text-blue-600'
+                  }`}
               >
                 Browse Items
               </button>
               <button
                 onClick={() => setActiveTab('donate')}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === 'donate' ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:text-blue-600'
-                }`}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'donate' ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:text-blue-600'
+                  }`}
               >
                 Donate Item
               </button>
@@ -590,17 +606,15 @@ const Dashboard = ({ onLogout }) => {
         <div className="flex">
           <button
             onClick={() => setActiveTab('browse')}
-            className={`flex-1 py-3 text-center text-sm font-medium ${
-              activeTab === 'browse' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-700'
-            }`}
+            className={`flex-1 py-3 text-center text-sm font-medium ${activeTab === 'browse' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-700'
+              }`}
           >
             Browse
           </button>
           <button
             onClick={() => setActiveTab('donate')}
-            className={`flex-1 py-3 text-center text-sm font-medium ${
-              activeTab === 'donate' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-700'
-            }`}
+            className={`flex-1 py-3 text-center text-sm font-medium ${activeTab === 'donate' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-700'
+              }`}
           >
             Donate
           </button>
@@ -643,7 +657,8 @@ const App = () => {
   }
 
   if (isAuthenticated) {
-    return <Dashboard onLogout={handleLogout} />;
+    const role = localStorage.getItem('role'); // check role after login
+    return role === "admin" ? <AdminDashboard onLogout={handleLogout} /> : <Dashboard onLogout={handleLogout} />;
   }
 
   if (showRegister) {
