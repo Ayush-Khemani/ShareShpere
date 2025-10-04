@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, User, LogOut, Heart, Filter, MapPin, Tag, Camera, Mail, Phone } from 'lucide-react';
+import { Search, Plus, User, LogOut, Heart, Filter, MapPin, Tag, Camera, Mail, Phone, Bell } from 'lucide-react';
 import LandingPage from './LandingPage';
 import UserDashboard from "./components/UserDashboard";
 import AdminDashboard from "./components/AdminDashboard";
+
 // API Base URL - Update this to match your backend
 const API_BASE = 'http://localhost:3000';
 
@@ -262,15 +263,14 @@ const RegisterComponent = ({ onRegister, switchToLogin }) => {
 const ItemCard = ({ item }) => (
   <div className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 overflow-hidden">
     <div className="aspect-w-16 aspect-h-9 bg-gray-200">
-      {item.item_photo ? (
+      {item.photo_path ? (
         <img
-          src={`${API_BASE}/uploads/${item.photo_path.split('/').pop()}`}
+          src={`${API_BASE}/${item.photo_path}`}
           alt={item.item_name}
-          className="w-full h-48 object-cover"
+          className="w-full h-48 object-cover rounded-lg"
         />
-
       ) : (
-        <div className="w-full h-48 bg-gray-200 flex items-center justify-center">
+        <div className="w-full h-48 bg-gray-200 flex items-center justify-center rounded-lg">
           <Camera className="text-gray-400 w-12 h-12" />
         </div>
       )}
@@ -320,14 +320,50 @@ const Dashboard = ({ onLogout }) => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showProfile, setShowProfile] = useState(false);
+  const [profile, setProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [notifications, setNotifications] = useState([]);
   const [filters, setFilters] = useState({
     category: '',
     condition: ''
   });
 
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [subscriptionDetails, setSubscriptionDetails] = useState({
+    itemName: '',
+    category: '',
+    condition: ''
+  });
+  const [subscriptionMessage, setSubscriptionMessage] = useState('');
+
   const categories = ['Furniture', 'Electronics', 'Clothing', 'Books', 'Toys', 'Kitchenware', 'Groceries', 'Home Decor', 'Cleaning Supplies', 'Miscellaneous'];
   const conditions = ['New', 'Like New', 'Good', 'Fair', 'Needs Repair', 'For Parts'];
 
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+
+  const fetchNotifications = async () => {
+    setNotificationsLoading(true);
+    try {
+      const data = await apiCall('/notification/get-notifications');
+      setNotifications(data.notifications || []);
+    } catch (err) {
+      console.error('Failed to fetch notifications:', err);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+  const fetchProfile = async () => {
+    setProfileLoading(true);
+    try {
+      const data = await apiCall('/user/profile');
+      setProfile(data.user); // assuming backend returns { user: { name, email, role } }
+    } catch (err) {
+      console.error('Failed to fetch profile:', err);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
   // Fetch items
   const fetchItems = async () => {
     setLoading(true);
@@ -347,7 +383,11 @@ const Dashboard = ({ onLogout }) => {
 
       const normalizedItems = (response.items || []).map(item => ({
         ...item,
-        photo_path: (item.photo_path || item.item_photo || '').replace(/\\/g, '/')
+        photo_path: item.photo_path
+          ? item.photo_path.replace(/\\/g, '/')
+          : item.item_photo
+            ? item.item_photo.replace(/\\/g, '/')
+            : null // fallback if neither exists
       }));
 
       setItems(normalizedItems);
@@ -412,7 +452,14 @@ const Dashboard = ({ onLogout }) => {
         <div className="text-center py-12">
           <Heart className="mx-auto w-16 h-16 text-gray-300 mb-4" />
           <h3 className="text-xl font-medium text-gray-500 mb-2">No items found</h3>
-          <p className="text-gray-400">Try adjusting your search or filters</p>
+          <p className="text-gray-400 mb-4">Try adjusting your search or filters</p>
+
+          <button
+            onClick={() => setShowSubscriptionModal(true)}
+            className="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Subscribe for Notifications
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -466,6 +513,7 @@ const Dashboard = ({ onLogout }) => {
         setCategory('');
         setCondition('');
         setSelectedFile(null);
+        fetchNotifications();
       } catch (err) {
         setMessage(err.message);
       } finally {
@@ -561,6 +609,62 @@ const Dashboard = ({ onLogout }) => {
     );
   };
 
+  // Notifications Tab
+  const NotificationsTab = () => {
+    if (notificationsLoading) return <div>Loading...</div>;
+    if (!notifications.length) return <div>No notifications yet.</div>;
+    const handleClearNotifications = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/notification/clear`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
+        // Check content type first
+        const contentType = response.headers.get('content-type');
+        let data;
+        if (contentType && contentType.includes('application/json')) {
+          data = await response.json();
+          console.log('Clear response:', data);
+        } else {
+          const text = await response.text();
+          console.log('Non-JSON response:', text);
+        }
+
+        // Optimistically clear notifications in frontend
+        setNotifications([]);
+      } catch (err) {
+        console.error('Failed to clear notifications:', err);
+      }
+    };
+    return (
+      <div className="space-y-6">
+        {/* Notification List */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {notifications.map((notif, idx) => (
+            <div key={idx} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+              <h4 className="font-semibold text-gray-800 mb-1">{notif.item_name}</h4>
+              <p className="text-gray-600 text-sm">{notif.message}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Clear All Button */}
+        <div className="flex justify-center">
+          <button
+            onClick={handleClearNotifications}
+            className="bg-red-500 hover:bg-red-600 text-white font-medium px-4 py-2 rounded-lg shadow transition"
+          >
+            Clear All Notifications
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -574,21 +678,46 @@ const Dashboard = ({ onLogout }) => {
             <nav className="hidden md:flex space-x-8">
               <button
                 onClick={() => setActiveTab('browse')}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'browse' ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:text-blue-600'
-                  }`}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'browse' ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:text-blue-600'}`}
               >
                 Browse Items
               </button>
               <button
                 onClick={() => setActiveTab('donate')}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'donate' ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:text-blue-600'
-                  }`}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'donate' ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:text-blue-600'}`}
               >
                 Donate Item
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('notifications');
+                  fetchNotifications();
+                }}
+                className="relative flex items-center gap-2 text-gray-700 hover:text-blue-600 transition-colors"
+              >
+                <Bell className="w-5 h-5" />
+                <span className="hidden sm:block">Notifications</span>
+
+                {notifications.length > 0 && (
+                  <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-red-600 rounded-full transform translate-x-1/2 -translate-y-1/2">
+                    {notifications.length}
+                  </span>
+                )}
               </button>
             </nav>
 
             <div className="flex items-center space-x-4">
+              {/* Profile Button */}
+              <button
+                onClick={() => {
+                  setShowProfile(prev => !prev);
+                  if (!profile) fetchProfile(); // fetch only once
+                }}
+                className="flex items-center gap-2 text-gray-700 hover:text-blue-600 transition-colors"
+              >
+                <User className="w-5 h-5" />
+                <span className="hidden sm:block">Profile</span>
+              </button>
               <button
                 onClick={onLogout}
                 className="flex items-center gap-2 text-gray-700 hover:text-red-600 transition-colors"
@@ -600,6 +729,36 @@ const Dashboard = ({ onLogout }) => {
           </div>
         </div>
       </header>
+
+      {/* Profile Card */}
+      {showProfile && (
+        <div className="fixed top-16 right-4 bg-white shadow-2xl rounded-2xl p-6 w-72 z-50 border border-gray-200">
+          {profileLoading ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-4"></div>
+              <p className="text-gray-500">Loading profile...</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center">
+              <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+                <User className="w-10 h-10 text-blue-600" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-800 mb-1">{profile?.name}</h2>
+              <p className="text-gray-500 text-sm mb-2">{profile?.email}</p>
+              <span className="px-3 py-1 bg-blue-50 text-blue-600 text-xs rounded-full mb-4">
+                {profile?.role?.toUpperCase()}
+              </span>
+
+              <button
+                onClick={() => setShowProfile(false)}
+                className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Mobile Navigation */}
       <div className="md:hidden bg-white border-b">
@@ -618,6 +777,12 @@ const Dashboard = ({ onLogout }) => {
           >
             Donate
           </button>
+          <button
+            onClick={() => setActiveTab('notifications')}
+            className={`flex-1 py-3 text-center text-sm font-medium ${activeTab === 'notifications' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-700'}`}
+          >
+            Notifications
+          </button>
         </div>
       </div>
 
@@ -625,7 +790,90 @@ const Dashboard = ({ onLogout }) => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'browse' && <BrowseItems />}
         {activeTab === 'donate' && <DonateItem />}
+        {activeTab === 'notifications' && <NotificationsTab />}
       </main>
+      {showSubscriptionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Subscribe for Notifications</h2>
+
+            {subscriptionMessage && (
+              <div className="bg-green-50 text-green-600 p-3 rounded-lg mb-4 text-sm">
+                {subscriptionMessage}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Item Name"
+                value={subscriptionDetails.itemName}
+                onChange={(e) =>
+                  setSubscriptionDetails({ ...subscriptionDetails, itemName: e.target.value })
+                }
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+
+              <select
+                value={subscriptionDetails.category}
+                onChange={(e) =>
+                  setSubscriptionDetails({ ...subscriptionDetails, category: e.target.value })
+                }
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select Category</option>
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={subscriptionDetails.condition}
+                onChange={(e) =>
+                  setSubscriptionDetails({ ...subscriptionDetails, condition: e.target.value })
+                }
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select Condition</option>
+                {conditions.map((cond) => (
+                  <option key={cond} value={cond}>
+                    {cond}
+                  </option>
+                ))}
+              </select>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setShowSubscriptionModal(false)}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      await apiCall('/api/notifications/subscribe', {
+                        method: 'POST',
+                        body: JSON.stringify(subscriptionDetails),
+                      });
+                      setSubscriptionMessage('Subscription successful! You’ll be notified when matching items appear.');
+                      setTimeout(() => setShowSubscriptionModal(false), 2000);
+                    } catch (err) {
+                      setSubscriptionMessage('Failed to subscribe: ' + err.message);
+                    }
+                  }}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                >
+                  Subscribe
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

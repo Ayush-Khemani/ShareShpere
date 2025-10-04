@@ -6,6 +6,9 @@ const userRoutes= require('./routes/user');
 const itemRoutes = require('./routes/items');
 const adminRoutes = require('./routes/admin');  
 const userDashboardRoutes = require('./routes/userDashboard');  
+const subscriptionRoutes =  require("./routes/subscriptionRoutes.js");
+const notificationRoutes = require('./routes/notificationRoutes');
+
 const cors = require('cors');
 app.use(cors());
 app.use('/uploads', express.static('uploads'));
@@ -18,6 +21,10 @@ app.use('/user', userRoutes);
 app.use('/item', itemRoutes);
 app.use('/admin', adminRoutes);  
 app.use('/dashboard', userDashboardRoutes); 
+app.use("/api/notifications", subscriptionRoutes);
+app.use('/notification', notificationRoutes);
+
+
 
 app.get('/', function (req, res) {
     req.query.search
